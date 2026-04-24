@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bookly Support</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0a0a12;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    #chat-container {
+      width: 100%;
+      max-width: 760px;
+      height: 92vh;
+      background: #111120;
+      border: 1px solid #1e1e35;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    }
+
+    /* Header */
+    header {
+      padding: 18px 24px;
+      background: #0e0e1d;
+      border-bottom: 1px solid #1e1e35;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      flex-shrink: 0;
+    }
+
+    .header-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .header-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #f0f0ff;
+      letter-spacing: -0.01em;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: #6b7280;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      background: #34d399;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #34d399;
+      animation: pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Messages */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      scrollbar-width: thin;
+      scrollbar-color: #1e1e35 transparent;
+    }
+
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: #1e1e35; border-radius: 4px; }
+
+    .message-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .message-row.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .avatar.assistant {
+      background: #1a1a30;
+      border: 1px solid #2a2a45;
+    }
+
+    .avatar.user {
+      background: #4f46e5;
+    }
+
+    .message {
+      max-width: 72%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #e2e8f0;
+    }
+
+    .message.assistant {
+      background: #181828;
+      border: 1px solid #1e1e35;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message.user {
+      background: #4f46e5;
+      border-bottom-right-radius: 4px;
+      color: #fff;
+    }
+
+    .message.streaming { opacity: 0.8; }
+
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 14px 16px;
+      background: #181828;
+      border: 1px solid #1e1e35;
+      border-radius: 16px;
+      border-bottom-left-radius: 4px;
+      width: fit-content;
+    }
+
+    .typing-indicator span {
+      width: 7px;
+      height: 7px;
+      background: #4f46e5;
+      border-radius: 50%;
+      animation: bounce 1.2s ease-in-out infinite;
+    }
+
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-6px); opacity: 1; }
+    }
+
+    /* Input */
+    #input-area {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      padding: 16px 20px;
+      border-top: 1px solid #1e1e35;
+      background: #0e0e1d;
+    }
+
+    #user-input {
+      flex: 1;
+      background: #181828;
+      border: 1px solid #2a2a45;
+      border-radius: 12px;
+      padding: 11px 16px;
+      font-size: 0.9rem;
+      color: #e2e8f0;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+      line-height: 1.5;
+      max-height: 120px;
+      transition: border-color 0.15s;
+    }
+
+    #user-input::placeholder { color: #3d3d5c; }
+    #user-input:focus { border-color: #4f46e5; }
+
+    #send-btn {
+      width: 40px;
+      height: 40px;
+      background: #4f46e5;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
+    #send-btn:hover:not(:disabled) { background: #4338ca; }
+    #send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    #send-btn svg { display: block; }
+  </style>
+</head>
+<body>
+  <div id="chat-container">
+    <header>
+      <!-- Bookly Logo -->
+      <svg class="logo" width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="38" height="38" rx="10" fill="#4f46e5"/>
+        <!-- Open book pages -->
+        <path d="M19 10 C19 10 12 11.5 10 13.5 L10 27 C12 25.5 16 24.5 19 25.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M19 10 C19 10 26 11.5 28 13.5 L28 27 C26 25.5 22 24.5 19 25.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <line x1="19" y1="10" x2="19" y2="25.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+        <!-- Bookmark ribbon -->
+        <path d="M25 9 L25 17 L22.5 15 L20 17 L20 9 Z" fill="white" opacity="0.9"/>
+      </svg>
+
+      <div class="header-text">
+        <div class="header-title">Bookly Support</div>
+        <div class="header-status">
+          <div class="status-dot"></div>
+          Online — always here to help
+        </div>
+      </div>
+    </header>
+
+    <div id="messages">
+      <div class="message-row assistant">
+        <div class="avatar assistant">
+          <svg width="16" height="16" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 6 C19 6 10 8 8 11 L8 28 C10 26 15 25 19 26" stroke="#6366f1" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+            <path d="M19 6 C19 6 28 8 30 11 L30 28 C28 26 23 25 19 26" stroke="#6366f1" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+            <line x1="19" y1="6" x2="19" y2="26" stroke="#6366f1" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="message assistant">Hi! I'm the Bookly support agent. How can I help you today?</div>
+      </div>
+    </div>
+
+    <div id="input-area">
+      <textarea id="user-input" rows="1" placeholder="Message Bookly support…"></textarea>
+      <button id="send-btn" aria-label="Send">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 2L11 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("user-input");
+    const sendBtn = document.getElementById("send-btn");
+    const sessionId = crypto.randomUUID();
+    const history = [];
+
+    function scrollToBottom() {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function createRow(role) {
+      const row = document.createElement("div");
+      row.className = `message-row ${role}`;
+
+      const avatar = document.createElement("div");
+      avatar.className = `avatar ${role}`;
+
+      if (role === "assistant") {
+        avatar.innerHTML = `<svg width="16" height="16" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 6 C19 6 10 8 8 11 L8 28 C10 26 15 25 19 26" stroke="#6366f1" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+          <path d="M19 6 C19 6 28 8 30 11 L30 28 C28 26 23 25 19 26" stroke="#6366f1" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+          <line x1="19" y1="6" x2="19" y2="26" stroke="#6366f1" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>`;
+      } else {
+        avatar.textContent = "You";
+      }
+
+      row.appendChild(avatar);
+      return row;
+    }
+
+    function appendMessage(role, text) {
+      const row = createRow(role);
+      const bubble = document.createElement("div");
+      bubble.className = `message ${role}`;
+      bubble.textContent = text;
+      row.appendChild(bubble);
+      messagesEl.appendChild(row);
+      scrollToBottom();
+      return bubble;
+    }
+
+    function showTyping() {
+      const row = createRow("assistant");
+      const indicator = document.createElement("div");
+      indicator.className = "typing-indicator";
+      indicator.innerHTML = "<span></span><span></span><span></span>";
+      row.appendChild(indicator);
+      row.id = "typing-row";
+      messagesEl.appendChild(row);
+      scrollToBottom();
+    }
+
+    function hideTyping() {
+      const el = document.getElementById("typing-row");
+      if (el) el.remove();
+    }
+
+    async function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      inputEl.value = "";
+      inputEl.style.height = "auto";
+      sendBtn.disabled = true;
+
+      appendMessage("user", text);
+      history.push({ role: "user", content: text });
+      showTyping();
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history, session_id: sessionId, stream: true }),
+        });
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let full = "";
+        let bubble = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          full += decoder.decode(value, { stream: true });
+
+          if (!bubble) {
+            hideTyping();
+            bubble = appendMessage("assistant", full);
+            bubble.classList.add("streaming");
+          } else {
+            bubble.textContent = full;
+            scrollToBottom();
+          }
+        }
+
+        if (bubble) {
+          bubble.classList.remove("streaming");
+        } else {
+          hideTyping();
+        }
+
+        history.push({ role: "assistant", content: full });
+      } catch (err) {
+        hideTyping();
+        appendMessage("assistant", "Something went wrong. Please try again.");
+        history.pop();
+      }
+
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    inputEl.addEventListener("input", () => {
+      inputEl.style.height = "auto";
+      inputEl.style.height = inputEl.scrollHeight + "px";
+    });
+  </script>
+</body>
+</html>

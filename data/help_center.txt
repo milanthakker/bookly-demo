@@ -1,0 +1,49 @@
+BOOKLY HELP CENTER
+==================
+
+1. PASSWORD RESET
+-----------------
+If you've forgotten your password or need to reset it, Bookly will send a secure reset link to the email address associated with your account. The link expires after 24 hours. If you don't receive the email within a few minutes, check your spam folder. If you no longer have access to your account email, contact support via phone at 555-555-5555.
+
+2. SHIPPING POLICY
+------------------
+Standard shipping is $5.00 for orders totalling under $50.00. Orders of $50.00 or more qualify for free standard shipping. All orders are shipped via standard delivery and typically arrive within 5–7 business days after dispatch. Bookly does not currently offer expedited shipping. Shipping is available to addresses within the United States only.
+
+3. REFUNDS AND CANCELLATIONS
+-----------------------------
+Orders can be cancelled and refunded only while they are in a pending state — once an order has been shipped or delivered it is no longer eligible for cancellation. Approved refunds are returned to the original payment method (credit card or gift card) within 5–10 business days. Gift card refunds are credited back to the original gift card balance.
+
+4. RETURNS
+----------
+Physical books may be returned within 30 days of delivery provided they are unopened and in undamaged condition. To initiate a return, contact support via chat and a prepaid return label will be emailed to you. Refunds for returned items are processed within 5–10 business days of the item being received at our warehouse.
+
+5. GIFT CARDS
+-------------
+Bookly gift cards can be used to pay for any order at checkout. Gift cards are non-refundable and have no cash value — they cannot be exchanged for cash or credit. Gift cards never expire. If a gift card balance does not cover the full order total, the remaining amount must be paid by credit card.
+
+6. ACCEPTED PAYMENT METHODS
+----------------------------
+Bookly accepts the following payment methods:
+- Visa
+- Mastercard
+- American Express
+- Discover
+- Bookly gift cards
+
+We do not accept PayPal, bank transfers, cheques, or cash. All transactions are processed securely and card details are never stored on Bookly servers.
+
+7. DAMAGED OR INCORRECT ORDERS
+--------------------------------
+If your order arrives damaged or you receive the wrong item, contact support via chat within 14 days of delivery. You will not be required to return the item. Support will arrange either a replacement or a full refund, at your preference.
+
+8. ACCOUNT SUSPENSION
+----------------------
+Accounts suspected of fraudulent activity — including gift card abuse, chargebacks, or repeated policy violations — may be suspended pending review. Suspended customers will receive an email notification. To appeal a suspension, contact support via chat and a member of our team will review your case within 2 business days.
+
+9. PRIVACY POLICY
+-----------------
+Bookly takes your privacy seriously. Your personal information, order history, and payment data are used solely to process and manage your orders. This data is never sold, rented, or shared with third parties for marketing purposes. For full details, refer to the Bookly Privacy Policy at bookly.com/privacy.
+
+10. SUPPORT HOURS
+-----------------
+Bookly offers live chat-based customer support 24 hours a day, 7 days a week, including public holidays. There are no hold times — you will be connected to a support agent immediately. For non-urgent queries, responses are provided within 1 business day.
