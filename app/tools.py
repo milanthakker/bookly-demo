@@ -76,8 +76,12 @@ TOOL_DEFINITIONS = [
     {
         "name": "process_refund",
         "description": (
-            "Request a refund for a customer's order. Only orders with a status of 'pending' are eligible — "
+            "Request a refund for a customer's order. "
+            "IMPORTANT: You MUST call get_order_details first to confirm the order status before calling this tool. "
+            "Only orders with a status of 'pending' are eligible for refunds — "
             "orders that have been shipped, delivered, cancelled, or already refunded cannot be refunded. "
+            "If get_order_details shows the order is not in 'pending' status, do NOT call this tool; "
+            "instead inform the customer that the order is ineligible for a refund. "
             "On success, updates the order status to 'refunded' and records the refund."
         ),
         "input_schema": {
