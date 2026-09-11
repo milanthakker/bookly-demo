@@ -1,6 +1,19 @@
+# Secrets: env vars belong in Vercel project settings, never in the bundle.
+# NOTE: when this file exists Vercel uses it INSTEAD of .gitignore, so every
+# sensitive path must be repeated here.
+.env
+.env.*
+!.env.example
+
+# Local virtualenv and caches
 .venv/
 __pycache__/
 *.pyc
+
+# Local database files (the app seeds in memory)
 *.db
+
+# Local tooling
 .arize-tmp-traces/
 .claude/
+.git/
