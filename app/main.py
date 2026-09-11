@@ -22,9 +22,11 @@ async def lifespan(app: FastAPI):
     ensure_ready()
     yield
     # Spans are exported as they end (SimpleSpanProcessor), so this is only a
-    # safety net for locally buffered state.
-    tracer_provider.force_flush()
-    tracer_provider.shutdown()
+    # safety net for locally buffered state. tracer_provider is None when the
+    # Arize credentials are not configured.
+    if tracer_provider is not None:
+        tracer_provider.force_flush()
+        tracer_provider.shutdown()
 
 
 app = FastAPI(title="Bookly Customer Service Agent", lifespan=lifespan)
