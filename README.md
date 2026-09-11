@@ -68,33 +68,104 @@ Once running, open [http://localhost:8000](http://localhost:8000) in your browse
 
 ## Startup Script
 
-The `start.sh` script handles the full setup:
+`bash start.sh` handles the full setup: it creates `.venv` if missing, installs
+dependencies, seeds the database on first run, and starts the server.
+
+The script invokes the virtualenv interpreter by path (`.venv/bin/python`), so it
+works from any directory and does not require the virtualenv to be activated in
+your shell first.
+
+### Running without the startup script
+
+Dependencies are installed only inside `.venv`, never globally. Use the venv
+interpreter explicitly:
 
 ```bash
-#!/bin/bash
+.venv/bin/python -m uvicorn app.main:app --reload
+```
 
-# Create virtual environment if it doesn't exist
-if [ ! -d ".venv" ]; then
-  echo "Creating virtual environment..."
-  python3 -m venv .venv
-fi
+Or activate the virtualenv first, then use plain `python3`:
 
-# Activate virtual environment
+```bash
 source .venv/bin/activate
-
-# Install dependencies
-echo "Installing dependencies..."
-pip3 install -r requirements.txt --quiet
-
-# Seed the database if it doesn't exist
-if [ ! -f "bookly.db" ]; then
-  echo "Seeding database..."
-  python3 -m app.seed
-fi
-
-# Start the server
-echo "Starting Bookly Support Agent at http://localhost:8000"
 python3 -m uvicorn app.main:app --reload
+```
+
+Running `python3 -m uvicorn app.main:app` with the system interpreter will not
+work -- the app exits with a message telling you which interpreter to use.
+
+## Deploying to Vercel
+
+The app runs on Vercel with no code changes. Vercel resolves `app/main.py` as the
+ASGI entrypoint automatically (it looks for `main.py` inside `app/`, exporting a
+top-level `app`), so the whole API builds into one Vercel Function.
+
+```bash
+npm i -g vercel
+vercel          # preview deploy
+vercel --prod   # production
+```
+
+Set these in **Project Settings -> Environment Variables** (`.env` is gitignored
+and is not uploaded):
+
+| Variable | Purpose |
+|---|---|
+| `ANTHROPIC_API_KEY` | Required. Claude API access. |
+| `ARIZE_API_KEY` | Optional. Enables Arize tracing. |
+| `ARIZE_SPACE_ID` | Optional. Enables Arize tracing. |
+| `ARIZE_PROJECT_NAME` | Optional. Defaults to `bookly-support-agent`. |
+
+Config in the repo:
+
+- `vercel.json` — sets `maxDuration` to 60s for `app/main.py`, since an agent
+  turn with tool calls takes longer than a plain request.
+- `.python-version` — pins Python 3.14 to match local development.
+- `.vercelignore` — keeps the virtualenv, caches, and stray `.db` files out of
+  the bundle.
+
+### Why it works on a read-only filesystem
+
+Serverless filesystems are read-only and instances are ephemeral, so the demo
+holds no durable state:
+
+- The database is **in-memory**, seeded on first use. Every cold start begins
+  from identical data.
+- `process_refund` **validates but does not persist**, so a refund-eligible
+  order stays eligible and repeated evaluation runs cannot contaminate
+  each other.
+- Spans use `SimpleSpanProcessor`, exporting as each span ends rather than
+  batching in a background thread that a frozen instance would never flush.
+
+## Invoking the Agent Remotely
+
+`POST /chat` is the whole API — the browser UI is just one client of it.
+
+```bash
+curl -X POST https://<your-deployment>.vercel.app/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"session_id": "row-1",
+       "auth_token": "david@example.com",
+       "messages": [{"role": "user", "content": "What are my orders?"}]}'
+```
+
+```json
+{"response": "You have 2 orders: #8 shipped ($32.98), #7 pending ($18.99)."}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `messages` | yes | Full conversation history; `[{role, content}]`. |
+| `session_id` | yes | Any string. Scopes server-side session context. |
+| `auth_token` | no | Customer identity (an email, in this mock). Omit and the agent asks. |
+| `stream` | no | `true` returns `text/event-stream`. |
+
+Because identity is a request field, an evaluation dataset can carry it as a
+column next to the query. `examples/invoke_agent.py` has a ready task function
+and a sample dataset:
+
+```bash
+BOOKLY_URL=https://<your-deployment>.vercel.app python examples/invoke_agent.py
 ```
 
 ## Sample Customers (Seed Data)

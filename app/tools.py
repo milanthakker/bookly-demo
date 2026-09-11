@@ -32,10 +32,13 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "email": {
                     "type": "string",
-                    "description": "The customer's email address.",
+                    "description": (
+                        "The customer's email address. Omit this when the session "
+                        "context already identifies the customer."
+                    ),
                 }
             },
-            "required": ["email"],
+            "required": [],
         },
     },
     {
@@ -98,6 +101,26 @@ TOOL_DEFINITIONS = [
 ]
 
 
+def resolve_auth_token(token: str) -> Optional[dict]:
+    """Map an invocation auth token to a customer identity.
+
+    This demo treats the token as the customer's email address, so an Arize
+    experiment dataset can carry identity in a plain column. Swap this one
+    function for a real check (JWT, session lookup) and nothing else changes.
+
+    Returns None if the token does not match a known customer.
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT name, email FROM customers WHERE LOWER(email) = ?",
+            (token.strip().lower(),),
+        ).fetchone()
+
+    if row is None:
+        return None
+    return {"customer_name": row["name"], "customer_email": row["email"]}
+
+
 def get_help_center() -> str:
     return HELP_CENTER_PATH.read_text(encoding="utf-8")
 
@@ -111,8 +134,15 @@ def _order_owner_email(order_id: int) -> Optional[str]:
     return row["email"] if row else None
 
 
-def get_customer_orders(email: str, session_id: str) -> str:
+def get_customer_orders(email: Optional[str], session_id: str) -> str:
     session = sessions.get_or_create(session_id)
+
+    # With an auth token the identity is already established, so the model does
+    # not need to supply an email. Without one, fall back to asking.
+    email = email or session.customer_email
+    if not email:
+        return json.dumps({"error": "Ask the customer for their email address first."})
+
     if session.customer_email and session.customer_email.lower() != email.lower():
         return json.dumps({"error": "You can only view orders for your own account."})
 
@@ -267,10 +297,6 @@ def process_refund(order_id: int, session_id: str, reason: Optional[str] = None)
                 "error": f"Order {order_id} cannot be refunded because its status is '{order['status']}'."
             })
 
-        conn.execute(
-            "UPDATE orders SET status = 'refunded', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (order_id,),
-        )
         payment = conn.execute(
             "SELECT amount_books, amount_tax, amount_shipping FROM payments WHERE order_id = ?",
             (order_id,),
@@ -278,18 +304,15 @@ def process_refund(order_id: int, session_id: str, reason: Optional[str] = None)
         refund_amount = round(
             payment["amount_books"] + payment["amount_tax"] + payment["amount_shipping"], 2
         ) if payment else 0.0
-        conn.execute(
-            "UPDATE payments SET status = 'refunded' WHERE order_id = ?",
-            (order_id,),
-        )
-        conn.execute(
-            "INSERT INTO refunds (order_id, reason, amount) VALUES (?, ?, ?)",
-            (order_id, reason, refund_amount),
-        )
 
+    # Simulated on purpose: the eligibility checks above are real, but nothing is
+    # persisted. Seed data therefore stays identical across requests, so a
+    # refund-eligible order can be exercised repeatedly by Arize experiments.
     return json.dumps({
         "success": True,
+        "simulated": True,
         "order_id": order_id,
+        "reason": reason,
         "refund_amount": refund_amount,
         "message": f"Order {order_id} has been successfully refunded for ${refund_amount:.2f}.",
     })
@@ -299,7 +322,7 @@ def execute_tool(name: str, inputs: dict, session_id: str) -> str:
     if name == "get_help_center":
         return get_help_center()
     if name == "get_customer_orders":
-        return get_customer_orders(inputs["email"], session_id)
+        return get_customer_orders(inputs.get("email"), session_id)
     if name == "get_order_details":
         return get_order_details(inputs["order_id"], session_id)
     if name == "get_order_payment":

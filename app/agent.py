@@ -1,16 +1,21 @@
 import json
 import anthropic
-from typing import Generator
+from typing import Generator, Optional
 from dotenv import load_dotenv
-from app.tools import TOOL_DEFINITIONS, execute_tool
+from opentelemetry.trace import get_tracer, Status, StatusCode
+from openinference.instrumentation import using_session
+from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
+from app.tools import TOOL_DEFINITIONS, execute_tool, resolve_auth_token
 from app import sessions
 
 load_dotenv()
 
 client = anthropic.Anthropic()
+tracer = get_tracer(__name__)
 
 MODEL = "claude-sonnet-4-6"
 AUTH_ERROR = "Unsuccessful authentication to Claude."
+INVALID_TOKEN = "Invalid auth token: no matching Bookly customer."
 
 BASE_SYSTEM_PROMPT = """You are a helpful customer service agent for Bookly, a book discovery and recommendation platform.
 You help customers with:
@@ -62,7 +67,56 @@ def _update_session_from_tool(session_id: str, tool_name: str, result: str):
         )
 
 
+def _last_user_text(messages: list[dict]) -> str:
+    for message in reversed(messages):
+        if message["role"] == "user" and isinstance(message["content"], str):
+            return message["content"]
+    return ""
+
+
+def _final_assistant_text(messages: list[dict]) -> str:
+    for block in messages[-1]["content"]:
+        if hasattr(block, "text"):
+            return block.text
+    return ""
+
+
+def _apply_auth_token(session_id: str, auth_token: Optional[str]) -> bool:
+    """Seed session identity from an invocation auth token.
+
+    Returns False if the token was supplied but did not resolve, so the caller
+    can fail fast without spending a model call.
+    """
+    if not auth_token:
+        return True
+
+    identity = resolve_auth_token(auth_token)
+    if identity is None:
+        return False
+
+    sessions.update(session_id, **identity)
+    return True
+
+
+
 def _run_tool_loop(messages: list[dict], session_id: str) -> list[dict]:
+    with using_session(session_id=session_id):
+        with tracer.start_as_current_span("run_tool_loop") as chain_span:
+            chain_span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, OpenInferenceSpanKindValues.CHAIN.value)
+            chain_span.set_attribute(SpanAttributes.INPUT_VALUE, _last_user_text(messages))
+            try:
+                messages = _run_tool_loop_inner(messages, session_id)
+                chain_span.set_attribute(SpanAttributes.OUTPUT_VALUE, _final_assistant_text(messages))
+            except Exception as e:
+                chain_span.set_status(Status(StatusCode.ERROR))
+                chain_span.record_exception(e)
+                raise
+            else:
+                chain_span.set_status(Status(StatusCode.OK))
+            return messages
+
+
+def _run_tool_loop_inner(messages: list[dict], session_id: str) -> list[dict]:
     while True:
         response = client.messages.create(
             model=MODEL,
@@ -81,7 +135,19 @@ def _run_tool_loop(messages: list[dict], session_id: str) -> list[dict]:
         tool_results = []
         for block in response.content:
             if block.type == "tool_use":
-                result = execute_tool(block.name, block.input, session_id)
+                with tracer.start_as_current_span(block.name) as tool_span:
+                    tool_span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, OpenInferenceSpanKindValues.TOOL.value)
+                    tool_span.set_attribute(SpanAttributes.TOOL_NAME, block.name)
+                    tool_span.set_attribute(SpanAttributes.TOOL_PARAMETERS, json.dumps(block.input))
+                    tool_span.set_attribute(SpanAttributes.INPUT_VALUE, json.dumps(block.input))
+                    try:
+                        result = execute_tool(block.name, block.input, session_id)
+                    except Exception as e:
+                        tool_span.set_status(Status(StatusCode.ERROR))
+                        tool_span.record_exception(e)
+                        raise
+                    tool_span.set_attribute(SpanAttributes.OUTPUT_VALUE, result)
+                    tool_span.set_status(Status(StatusCode.OK))
                 _update_session_from_tool(session_id, block.name, result)
                 tool_results.append({
                     "type": "tool_result",
@@ -92,22 +158,24 @@ def _run_tool_loop(messages: list[dict], session_id: str) -> list[dict]:
         messages.append({"role": "user", "content": tool_results})
 
 
-def chat(messages: list[dict], session_id: str) -> str:
+def chat(messages: list[dict], session_id: str, auth_token: Optional[str] = None) -> str:
+    if not _apply_auth_token(session_id, auth_token):
+        return INVALID_TOKEN
     try:
         messages = _run_tool_loop(list(messages), session_id)
-        for block in messages[-1]["content"]:
-            if hasattr(block, "text"):
-                return block.text
-        return ""
+        return _final_assistant_text(messages)
     except anthropic.AuthenticationError:
         return AUTH_ERROR
 
 
-def chat_stream(messages: list[dict], session_id: str) -> Generator[str, None, None]:
+def chat_stream(
+    messages: list[dict], session_id: str, auth_token: Optional[str] = None
+) -> Generator[str, None, None]:
+    if not _apply_auth_token(session_id, auth_token):
+        yield INVALID_TOKEN
+        return
     try:
         messages = _run_tool_loop(list(messages), session_id)
-        for block in messages[-1]["content"]:
-            if hasattr(block, "text"):
-                yield block.text
+        yield _final_assistant_text(messages)
     except anthropic.AuthenticationError:
         yield AUTH_ERROR
