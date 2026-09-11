@@ -1,24 +1,29 @@
 #!/bin/bash
+set -euo pipefail
+
+# Always operate from the project root, whatever the caller's cwd is.
+cd "$(dirname "$0")"
+
+VENV=".venv"
+PY="$VENV/bin/python"
 
 # Create virtual environment if it doesn't exist
-if [ ! -d ".venv" ]; then
+if [ ! -x "$PY" ]; then
   echo "Creating virtual environment..."
-  python3 -m venv .venv
+  python3 -m venv "$VENV"
 fi
 
-# Activate virtual environment
-source .venv/bin/activate
-
-# Install dependencies
+# Every command below invokes the venv interpreter by path, so the correct
+# Python is used whether or not the venv is activated in the caller's shell.
 echo "Installing dependencies..."
-pip3 install -r requirements.txt --quiet
+"$PY" -m pip install -r requirements.txt --quiet
 
 # Seed the database if it doesn't exist
 if [ ! -f "bookly.db" ]; then
   echo "Seeding database..."
-  python3 -m app.seed
+  "$PY" -m app.seed
 fi
 
 # Start the server
 echo "Starting Bookly Support Agent at http://localhost:8000"
-python3 -m uvicorn app.main:app --reload
+exec "$PY" -m uvicorn app.main:app --reload

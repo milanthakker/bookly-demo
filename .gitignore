@@ -35,3 +35,4 @@ logs/
 
 # Database
 *.db
+.arize-tmp-traces/
