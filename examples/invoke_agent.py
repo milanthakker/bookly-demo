@@ -14,6 +14,11 @@ import urllib.request
 BOOKLY_URL = os.getenv("BOOKLY_URL", "http://localhost:8000").rstrip("/")
 TIMEOUT = float(os.getenv("BOOKLY_TIMEOUT", "120"))
 
+# Vercel Deployment Protection returns 401 to unauthenticated callers. Set this
+# to the project's "Protection Bypass for Automation" secret to call a protected
+# deployment from an evaluation harness. Not needed for localhost.
+BYPASS_TOKEN = os.getenv("BOOKLY_BYPASS_TOKEN")
+
 
 def ask(query: str, auth_token: str | None = None, session_id: str | None = None) -> str:
     """Send one query to the agent and return its reply."""
@@ -24,10 +29,14 @@ def ask(query: str, auth_token: str | None = None, session_id: str | None = None
     if auth_token:
         payload["auth_token"] = auth_token
 
+    headers = {"Content-Type": "application/json"}
+    if BYPASS_TOKEN:
+        headers["x-vercel-protection-bypass"] = BYPASS_TOKEN
+
     request = urllib.request.Request(
         f"{BOOKLY_URL}/chat",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
     )
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
         return json.load(response)["response"]
@@ -39,8 +48,13 @@ def task(row: dict) -> str:
     Expects columns `query` and (optionally) `auth_token`. Pass this straight to
     your experiment runner as the task, then score the returned string with
     whichever evaluators you want.
+
+    Some Arize surfaces hand the row over with the user-defined columns nested
+    under `additional_properties` (the `ax` CLI exports them that way), so
+    unwrap that if it is present.
     """
-    return ask(row["query"], row.get("auth_token"))
+    fields = row.get("additional_properties") or row
+    return ask(fields["query"], fields.get("auth_token"))
 
 
 # A dataset shaped the way `task` expects.
