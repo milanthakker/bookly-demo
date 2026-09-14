@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,8 @@ load_dotenv()
 from app.tracing import tracer_provider  # noqa: E402 -- must instrument before app.agent imports anthropic
 from app.agent import chat, chat_stream
 from app.database import ensure_ready
+from opentelemetry.context import attach, detach
+from opentelemetry.propagate import extract
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -57,6 +59,10 @@ class ChatRequest(BaseModel):
     # dataset) can carry it as a plain field instead of establishing it
     # conversationally. Optional: omit it and the agent asks for an email.
     auth_token: str | None = None
+    # Arize adds this on remote-agent experiment replays. It carries the space
+    # and project to route spans to, plus the experiment/run/example/dataset
+    # ids that link those spans back to the experiment row.
+    arize_metadata: dict | None = None
 
 
 @app.get("/")
@@ -70,13 +76,20 @@ def health():
 
 
 @app.post("/chat")
-def chat_endpoint(req: ChatRequest):
+def chat_endpoint(req: ChatRequest, request: Request):
     messages = [m.model_dump() for m in req.messages]
 
-    if req.stream:
-        return StreamingResponse(
-            chat_stream(messages, req.session_id, req.auth_token),
-            media_type="text/event-stream",
-        )
+    # Join the caller's trace when it propagates W3C headers (Arize does), so
+    # the agent's spans hang off the experiment's trace instead of starting a
+    # detached one.
+    token = attach(extract(dict(request.headers)))
+    try:
+        if req.stream:
+            return StreamingResponse(
+                chat_stream(messages, req.session_id, req.auth_token, req.arize_metadata),
+                media_type="text/event-stream",
+            )
 
-    return {"response": chat(messages, req.session_id, req.auth_token)}
+        return {"response": chat(messages, req.session_id, req.auth_token, req.arize_metadata)}
+    finally:
+        detach(token)

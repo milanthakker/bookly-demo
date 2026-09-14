@@ -3,10 +3,13 @@ import anthropic
 from typing import Generator, Optional
 from dotenv import load_dotenv
 from opentelemetry.trace import get_tracer, Status, StatusCode
+from opentelemetry import baggage
+from arize.otel import set_routing_context
 from openinference.instrumentation import using_session
 from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
 from app.tools import TOOL_DEFINITIONS, execute_tool, resolve_auth_token
 from app import sessions
+from app.tracing import DEFAULT_SPACE_ID, PROJECT_NAME
 
 load_dotenv()
 
@@ -99,11 +102,58 @@ def _apply_auth_token(session_id: str, auth_token: Optional[str]) -> bool:
 
 
 
-def _run_tool_loop(messages: list[dict], session_id: str) -> list[dict]:
-    with using_session(session_id=session_id):
+# Identifiers Arize sends under `arize_metadata`, stamped onto the chain span as
+# bare keys (no prefix) so a run's spans link back to its experiment row.
+_EXPERIMENT_KEYS = ("experiment_id", "run_id", "example_id", "dataset_id")
+
+
+def _metadata_with_baggage(arize_metadata: Optional[dict]) -> dict:
+    """Merge the request's `arize_metadata` with any values sent via baggage.
+
+    Arize puts the same identifiers in both places. The body is preferred; the
+    baggage fallback keeps experiment linkage working if the body key is absent,
+    which would otherwise fail silently by routing spans to the default project.
+    Baggage uses bare keys, with no `arize.` prefix.
+    """
+    merged = {}
+    for key in _EXPERIMENT_KEYS + ("space_id", "project_name"):
+        value = baggage.get_baggage(key)
+        if value:
+            merged[key] = value
+    merged.update(arize_metadata or {})
+    return merged
+
+
+def _routing_target(arize_metadata: Optional[dict]) -> tuple[Optional[str], Optional[str]]:
+    """Resolve which Arize space and project a request's spans belong to.
+
+    An experiment names its own target; everything else falls back to the
+    configured defaults. arize-otel drops spans unless BOTH values are set, so
+    never return a half-populated pair.
+    """
+    md = arize_metadata or {}
+    space_id = md.get("space_id") or DEFAULT_SPACE_ID
+    project_name = md.get("project_name") or PROJECT_NAME
+    if not space_id or not project_name:
+        return None, None
+    return space_id, project_name
+
+
+def _run_tool_loop(
+    messages: list[dict], session_id: str, arize_metadata: Optional[dict] = None
+) -> list[dict]:
+    arize_metadata = _metadata_with_baggage(arize_metadata)
+    space_id, project_name = _routing_target(arize_metadata)
+    with using_session(session_id=session_id), set_routing_context(
+        space_id=space_id or "", project_name=project_name or ""
+    ):
         with tracer.start_as_current_span("run_tool_loop") as chain_span:
             chain_span.set_attribute(SpanAttributes.OPENINFERENCE_SPAN_KIND, OpenInferenceSpanKindValues.CHAIN.value)
             chain_span.set_attribute(SpanAttributes.INPUT_VALUE, _last_user_text(messages))
+            for key in _EXPERIMENT_KEYS:
+                value = (arize_metadata or {}).get(key)
+                if value:
+                    chain_span.set_attribute(key, str(value))
             try:
                 messages = _run_tool_loop_inner(messages, session_id)
                 chain_span.set_attribute(SpanAttributes.OUTPUT_VALUE, _final_assistant_text(messages))
@@ -158,24 +208,32 @@ def _run_tool_loop_inner(messages: list[dict], session_id: str) -> list[dict]:
         messages.append({"role": "user", "content": tool_results})
 
 
-def chat(messages: list[dict], session_id: str, auth_token: Optional[str] = None) -> str:
+def chat(
+    messages: list[dict],
+    session_id: str,
+    auth_token: Optional[str] = None,
+    arize_metadata: Optional[dict] = None,
+) -> str:
     if not _apply_auth_token(session_id, auth_token):
         return INVALID_TOKEN
     try:
-        messages = _run_tool_loop(list(messages), session_id)
+        messages = _run_tool_loop(list(messages), session_id, arize_metadata)
         return _final_assistant_text(messages)
     except anthropic.AuthenticationError:
         return AUTH_ERROR
 
 
 def chat_stream(
-    messages: list[dict], session_id: str, auth_token: Optional[str] = None
+    messages: list[dict],
+    session_id: str,
+    auth_token: Optional[str] = None,
+    arize_metadata: Optional[dict] = None,
 ) -> Generator[str, None, None]:
     if not _apply_auth_token(session_id, auth_token):
         yield INVALID_TOKEN
         return
     try:
-        messages = _run_tool_loop(list(messages), session_id)
+        messages = _run_tool_loop(list(messages), session_id, arize_metadata)
         yield _final_assistant_text(messages)
     except anthropic.AuthenticationError:
         yield AUTH_ERROR
